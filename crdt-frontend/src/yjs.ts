@@ -1,23 +1,70 @@
-import * as Y from 'yjs'
-import { WebsocketProvider } from 'y-websocket'
-import { IndexeddbPersistence } from 'y-indexeddb'
+import * as Y from "yjs";
+import { WebsocketProvider } from "y-websocket";
+import { IndexeddbPersistence } from "y-indexeddb";
 
-const doc = new Y.Doc()
-const wsProvider = new WebsocketProvider('ws://localhost:1234', 'maddy-demo', doc)
-const yText=doc.getText('shared')
-const persistence = new IndexeddbPersistence('maddy-demo', doc)
-persistence.once('synced', () => { console.log('initial content loaded') })
+export type YjsClient = {
+  doc: Y.Doc;
+  yText: Y.Text;
+  wsProvider: WebsocketProvider;
+  idb: IndexeddbPersistence;
+  destroy: () => void;
+};
 
-// Attach listeners at creation time so we never miss the early
-// // 'connecting'/'connected' events (the provider connects immediately on construction).
-// wsProvider.on('status', (e) => console.log('[yjs] status:', e.status))
-// wsProvider.on('connection-error', (e) => console.log('[yjs] connection-error:', e))
-// wsProvider.on('sync', (isSynced) => console.log('[yjs] synced:', isSynced))
+const WS_URL = "ws://localhost:1234";
 
-export {doc,wsProvider,yText}
+// Factory instead of module-scope singletons: the provider can't be built at
+// import time anymore because it needs a token, and we must be able to tear it
+// down and rebuild it (logout / token change). One call === one logical session.
+export function createYjsClient(roomName: string, token: string): YjsClient {
+  const doc = new Y.Doc();
 
-if (import.meta.env.DEV) {
-  ;(window as any).wsProvider = wsProvider
-  ;(window as any).doc = doc
-  ;(window as any).yText = yText
+  // NOTE: key is "shared" to match the existing doc/IndexedDB cache and any
+  // content already persisted on the server. 
+  const yText = doc.getText("shared");
+
+  // IndexedDB persistence: rehydrates `doc` from the local cache, so content
+  // shows on first paint before the server round-trip completes.
+  const idb = new IndexeddbPersistence(roomName, doc);
+
+  // WebSocket provider: y-websocket serializes `params` into the WS query
+  // string, so the backend sees `?token=<JWT>` and can gate the upgrade.
+  const wsProvider = new WebsocketProvider(WS_URL, roomName, doc, {
+    params: { token },
+  });
+
+  // Dev hooks — poke at live state from the console. Dev builds only.
+  if (import.meta.env.DEV) {
+    (window as any).doc = doc;
+    (window as any).yText = yText;
+    (window as any).wsProvider = wsProvider;
+    (window as any).idb = idb;
+  }
+
+  const destroy = () => {
+    wsProvider.destroy();
+    idb.destroy();
+    doc.destroy();
+  };
+
+  return { doc, yText, wsProvider, idb, destroy };
+}
+
+// Decode a JWT payload client-side for DISPLAY ONLY (no signature check — the
+// server already verified it; the client just trusts the claims it gets back).
+export function decodeJwtPayload(
+  token: string
+): { sub: string; name: string; color: string } | null {
+  try {
+    // JWTs are base64url-encoded (`-`/`_`, no `=` padding). atob expects plain
+    // base64, so translate the alphabet and re-pad before decoding.
+    const base64url = token.split(".")[1];
+    const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(
+      base64.length + ((4 - (base64.length % 4)) % 4),
+      "="
+    );
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
 }

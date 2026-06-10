@@ -1,48 +1,25 @@
-import { useEffect, useState } from "react";
-import "./App.css";
-import { doc, wsProvider, yText } from "./yjs";
+import { useState } from "react";
+import { Login } from "./Login";
+import { KanbanBoard } from "./KanbanBoard";
 
-function App() {
-  useEffect(() => {
-    const onStatus = (e: { status: string }) => console.log(e.status);
-    wsProvider.on("status", onStatus);
+export default function App() {
+  // Token is the single source of truth for "logged in?". Lazy-init from
+  // localStorage so a refresh keeps you signed in without a re-login.
+  const [token, setToken] = useState<string | null>(
+    () => localStorage.getItem("token")
+  );
 
-    // The provider connects on import, so the initial "connecting"/"connected"
-    // status events may have already fired before this effect ran. Log the
-    // current state once; the listener above handles any later changes.
-    console.log(wsProvider.wsconnected ? "connected" : "connecting");
-
-    const onChange = (event: any) => {
-      console.log(event.changes.delta);
-      setText(yText.toString());
-    };
-
-    yText.observe(onChange);
-
-    return () => {
-      wsProvider.off("status", onStatus);
-      yText.unobserve(onChange);
-    };
-  }, []);
-
-  const [text, setText] = useState("");
+  if (!token) {
+    return <Login onLogin={setToken} />;
+  }
 
   return (
-    <>
-      <textarea
-        value={text}
-        onChange={(e) => {
-          doc.transact(() => {
-            yText.delete(0, yText.length);
-            yText.insert(0, e.target.value);
-          });
-        }}
-      ></textarea>
-
-      <button onClick={() => wsProvider.disconnect()}>Offline</button>
-<button onClick={() => wsProvider.connect()}>Online</button>
-    </>
+    <KanbanBoard
+      token={token}
+      onLogout={() => {
+        localStorage.removeItem("token");
+        setToken(null);
+      }}
+    />
   );
 }
-
-export default App;
