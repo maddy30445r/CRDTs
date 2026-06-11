@@ -1,14 +1,20 @@
 import { useEffect, useState } from "react";
 import { createYjsClient, decodeJwtPayload, type YjsClient } from "./yjs";
 
-const ROOM_NAME = "maddy-demo"; // hardcoded for now — boards-by-URL comes in Day 5
-
 export function KanbanBoard({
   token,
+  boardId,
+  boardName,
   onLogout,
+  onLeaveBoard,
+  onNotMember,
 }: {
   token: string;
+  boardId: string;
+  boardName?: string | null;
   onLogout: () => void;
+  onLeaveBoard: () => void;
+  onNotMember: () => void;
 }) {
   const [client, setClient] = useState<YjsClient | null>(null);
   const [text, setText] = useState("");
@@ -21,7 +27,7 @@ export function KanbanBoard({
   // destroys the first client and the effect re-runs with a fresh one. Building
   // inside the effect (not at module scope) is what makes that teardown work.
   useEffect(() => {
-    const c = createYjsClient(ROOM_NAME, token);
+    const c = createYjsClient(boardId, token);
     setClient(c);
 
     // Awareness identity from the JWT claims, so other connected users see who
@@ -42,14 +48,21 @@ export function KanbanBoard({
       localStorage.removeItem("token");
       window.location.reload();
     };
+    const handleConnectionClose = (event: CloseEvent) => {
+      if (event.code === 4003) {
+        onNotMember();
+      }
+    };
+    c.wsProvider.on("connection-close", handleConnectionClose);
     c.wsProvider.on("connection-error", handleConnectionError);
 
     return () => {
+      c.wsProvider.off("connection-close", handleConnectionClose);
       c.wsProvider.off("connection-error", handleConnectionError);
       c.destroy();
       setClient(null);
     };
-  }, [token]);
+  }, [token, boardId]);
 
   // Textarea binding — bidirectional. Preserved from the original App.tsx:
   // controlled component + minimal-span diff so concurrent edits MERGE instead
@@ -82,7 +95,10 @@ export function KanbanBoard({
     const updateUsers = () => {
       // Dedupe by user id (a person with two tabs is two clientIDs but one
       // user) and drop ourselves so the list reads "who ELSE is online".
-      const byId = new Map<string, { id: string; name: string; color: string }>();
+      const byId = new Map<
+        string,
+        { id: string; name: string; color: string }
+      >();
       awareness.getStates().forEach((state: any) => {
         const u = state.user;
         if (u && u.id && u.id !== selfId) byId.set(u.id, u);
@@ -95,13 +111,20 @@ export function KanbanBoard({
     return () => awareness.off("change", updateUsers);
   }, [client, token]);
 
-  if (!client) return <div style={{ margin: "100px auto", textAlign: "center" }}>Connecting…</div>;
+  if (!client)
+    return (
+      <div style={{ margin: "100px auto", textAlign: "center" }}>
+        Connecting…
+      </div>
+    );
 
   const { doc, yText, wsProvider } = client;
   const identity = decodeJwtPayload(token);
 
   return (
-    <div style={{ maxWidth: 800, margin: "40px auto", fontFamily: "system-ui" }}>
+    <div
+      style={{ maxWidth: 800, margin: "40px auto", fontFamily: "system-ui" }}
+    >
       <div
         style={{
           display: "flex",
@@ -109,35 +132,53 @@ export function KanbanBoard({
           alignItems: "center",
         }}
       >
-        <h2>Kanban Demo — {identity?.name}</h2>
+        <div>
+          <button onClick={onLeaveBoard} style={{ marginRight: 12 }}>
+            ← Boards
+          </button>
+          <span style={{ fontSize: 14, color: "#666" }}>
+            Board: <strong>{boardName ?? boardId}</strong> · You: {identity?.name}
+          </span>
+        </div>
         <button onClick={onLogout}>Log out</button>
       </div>
 
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
         <textarea
-        style={{ flex: 1, height: 300, fontFamily: "monospace" }}
-        value={text}
-        onChange={(e) => {
-          const next = e.target.value;
-          const prev = yText.toString();
+          style={{ flex: 1, height: 300, fontFamily: "monospace" }}
+          value={text}
+          onChange={(e) => {
+            const next = e.target.value;
+            const prev = yText.toString();
 
-          // Edit only the span that actually changed (common prefix + common
-          // suffix) instead of replacing the whole text. Prevents wiping the doc
-          // and lets concurrent edits merge instead of clobbering.
-          let start = 0;
-          while (start < prev.length && start < next.length && prev[start] === next[start]) start++;
-          let endPrev = prev.length, endNext = next.length;
-          while (endPrev > start && endNext > start && prev[endPrev - 1] === next[endNext - 1]) {
-            endPrev--;
-            endNext--;
-          }
+            // Edit only the span that actually changed (common prefix + common
+            // suffix) instead of replacing the whole text. Prevents wiping the doc
+            // and lets concurrent edits merge instead of clobbering.
+            let start = 0;
+            while (
+              start < prev.length &&
+              start < next.length &&
+              prev[start] === next[start]
+            )
+              start++;
+            let endPrev = prev.length,
+              endNext = next.length;
+            while (
+              endPrev > start &&
+              endNext > start &&
+              prev[endPrev - 1] === next[endNext - 1]
+            ) {
+              endPrev--;
+              endNext--;
+            }
 
-          doc.transact(() => {
-            if (endPrev > start) yText.delete(start, endPrev - start);
-            if (endNext > start) yText.insert(start, next.slice(start, endNext));
-          });
-        }}
-      />
+            doc.transact(() => {
+              if (endPrev > start) yText.delete(start, endPrev - start);
+              if (endNext > start)
+                yText.insert(start, next.slice(start, endNext));
+            });
+          }}
+        />
 
         <aside style={{ width: 200, flexShrink: 0 }}>
           <div style={{ fontWeight: 600, marginBottom: 8 }}>

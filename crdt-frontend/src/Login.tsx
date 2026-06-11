@@ -23,7 +23,6 @@ export function Login({ onLogin }: { onLogin: (token: string) => void }) {
         return;
       }
       const { token } = await res.json();
-      localStorage.setItem("token", token);
       onLogin(token);
     } catch {
       setError("network error — is the server running?");
