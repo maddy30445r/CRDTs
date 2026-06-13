@@ -28,7 +28,7 @@ export type Card = {
   createdBy: string;
 };
 
-export type Identity = { id: string; name: string };
+export type Identity = { id: string; name: string; color: string };
 
 // ============================================================
 // Map accessors — return the STABLE top-level Y.Map. Call once

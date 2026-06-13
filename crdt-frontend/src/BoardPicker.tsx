@@ -43,65 +43,52 @@ export function BoardPicker({
   }, [token]);
 
   return (
-    <div style={{ maxWidth: 480, margin: "60px auto", fontFamily: "system-ui" }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <h2>Your boards</h2>
-        <button onClick={onLogout}>Log out</button>
+    <div className="min-h-screen bg-neutral-950 text-neutral-100">
+      <div className="max-w-xl mx-auto p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-semibold">Your boards</h2>
+          <button
+            onClick={onLogout}
+            className="text-sm text-neutral-400 hover:text-neutral-100 transition-colors"
+          >
+            Log out
+          </button>
+        </div>
+
+        {error && (
+          <div className="bg-red-950/50 border border-red-900 text-red-200 text-sm rounded p-3 mb-4">
+            {error}
+          </div>
+        )}
+
+        {boards === null && !error && (
+          <div className="text-neutral-500 text-sm">Loading…</div>
+        )}
+
+        {boards !== null && boards.length === 0 && (
+          <div className="text-neutral-500 text-sm">
+            You're not a member of any boards yet. Ask an admin to add you.
+          </div>
+        )}
+
+        {boards !== null && boards.length > 0 && (
+          <ul className="space-y-2">
+            {boards.map((b) => (
+              <li key={b.id}>
+                <button
+                  onClick={() => onPick(b.id, b.name)}
+                  className="w-full text-left p-3 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 rounded transition-colors"
+                >
+                  <div className="font-medium text-neutral-100">{b.name}</div>
+                  <div className="text-xs text-neutral-500 mt-1 font-mono">
+                    {b.id}
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
-
-      {error && (
-        <div
-          style={{
-            background: "#fff3cd",
-            padding: 12,
-            borderRadius: 4,
-            margin: "12px 0",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {boards === null && !error && <div>Loading…</div>}
-
-      {boards !== null && boards.length === 0 && (
-        <div style={{ color: "#666", marginTop: 16 }}>
-          You're not a member of any boards yet. Ask an admin to add you (or seed
-          yourself in psql for now).
-        </div>
-      )}
-
-      {boards !== null && boards.length > 0 && (
-        <ul style={{ listStyle: "none", padding: 0, marginTop: 16 }}>
-          {boards.map((b) => (
-            <li key={b.id} style={{ marginBottom: 8 }}>
-              <button
-                onClick={() => onPick(b.id, b.name)}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  padding: 12,
-                  border: "1px solid #ddd",
-                  borderRadius: 4,
-                  background: "white",
-                  cursor: "pointer",
-                }}
-              >
-                <div style={{ fontWeight: 600 }}>{b.name}</div>
-                <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
-                  {b.id}
-                </div>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }

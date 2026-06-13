@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { createYjsClient, decodeJwtPayload, type YjsClient } from "./yjs";
 import { DebugBoard } from "./DebugBoard";
+import { Header } from "./Header";
+import { BoardView } from "./BoardView";
 import { type Identity } from "./board-model";
 
 export function KanbanBoard({
@@ -19,9 +21,6 @@ export function KanbanBoard({
   onNotMember: () => void;
 }) {
   const [client, setClient] = useState<YjsClient | null>(null);
-  const [onlineUsers, setOnlineUsers] = useState<
-    { id: string; name: string; color: string }[]
-  >([]);
 
   // Construct the Yjs client once after mount; tear down on unmount.
   // StrictMode-safe: in dev React mounts → unmounts → remounts, so the cleanup
@@ -67,117 +66,38 @@ export function KanbanBoard({
     };
   }, [token, boardId]);
 
-  // Online presence via awareness. Every client publishes its `user` field
-  // (set above from the JWT); awareness.getStates() is the union of everyone's.
-  // We recompute on each 'change' event (join / leave / identity update).
-  useEffect(() => {
-    if (!client) return;
-    const { awareness } = client.wsProvider;
-    const selfId = decodeJwtPayload(token)?.sub;
-
-    const updateUsers = () => {
-      // Dedupe by user id (a person with two tabs is two clientIDs but one
-      // user) and drop ourselves so the list reads "who ELSE is online".
-      const byId = new Map<
-        string,
-        { id: string; name: string; color: string }
-      >();
-      awareness.getStates().forEach((state: any) => {
-        const u = state.user;
-        if (u && u.id && u.id !== selfId) byId.set(u.id, u);
-      });
-      setOnlineUsers([...byId.values()]);
-    };
-
-    updateUsers();
-    awareness.on("change", updateUsers);
-    return () => awareness.off("change", updateUsers);
-  }, [client, token]);
-
   if (!client)
     return (
-      <div style={{ margin: "100px auto", textAlign: "center" }}>
+      <div className="h-screen flex items-center justify-center bg-neutral-950 text-neutral-400">
         Connecting…
       </div>
     );
 
-  const { doc, wsProvider } = client;
   const identity = decodeJwtPayload(token);
   const userIdentity: Identity = identity
-    ? { id: identity.sub, name: identity.name }
-    : { id: "anonymous", name: "Anonymous" };
+    ? { id: identity.sub, name: identity.name, color: identity.color }
+    : { id: "anonymous", name: "Anonymous", color: "#888888" };
+
+  // ?debug=1 keeps the K1 DebugBoard reachable — our only card-move/rebalance
+  // test surface until K4 adds drag-and-drop.
+  const debugMode =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).has("debug");
 
   return (
-    <div
-      style={{ maxWidth: 1200, margin: "40px auto", fontFamily: "system-ui" }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <div>
-          <button onClick={onLeaveBoard} style={{ marginRight: 12 }}>
-            ← Boards
-          </button>
-          <span style={{ fontSize: 14, color: "#666" }}>
-            Board: <strong>{boardName ?? boardId}</strong> · You: {identity?.name}
-          </span>
-        </div>
-        <button onClick={onLogout}>Log out</button>
-      </div>
-
-      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <DebugBoard doc={doc} identity={userIdentity} />
-        </div>
-
-        <aside style={{ width: 200, flexShrink: 0 }}>
-          <div style={{ fontWeight: 600, marginBottom: 8 }}>
-            Online{onlineUsers.length > 0 ? ` (${onlineUsers.length})` : ""}
-          </div>
-          {onlineUsers.length === 0 ? (
-            <div style={{ color: "#888", fontSize: 13 }}>No one else here</div>
-          ) : (
-            <ul
-              style={{
-                listStyle: "none",
-                padding: 0,
-                margin: 0,
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-              }}
-            >
-              {onlineUsers.map((u) => (
-                <li
-                  key={u.id}
-                  style={{ display: "flex", alignItems: "center", gap: 8 }}
-                >
-                  <span
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: "50%",
-                      background: u.color,
-                      display: "inline-block",
-                      flexShrink: 0,
-                    }}
-                  />
-                  {u.name}
-                </li>
-              ))}
-            </ul>
-          )}
-        </aside>
-      </div>
-
-      <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-        <button onClick={() => wsProvider.disconnect()}>Offline</button>
-        <button onClick={() => wsProvider.connect()}>Online</button>
-      </div>
+    <div className="h-screen flex flex-col bg-neutral-950 text-neutral-100">
+      <Header
+        boardId={boardName ?? boardId}
+        identity={userIdentity}
+        wsProvider={client.wsProvider}
+        onLeaveBoard={onLeaveBoard}
+        onLogout={onLogout}
+      />
+      {debugMode ? (
+        <DebugBoard doc={client.doc} identity={userIdentity} />
+      ) : (
+        <BoardView client={client} identity={userIdentity} />
+      )}
     </div>
   );
 }
