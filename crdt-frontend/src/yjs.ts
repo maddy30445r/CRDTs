@@ -4,7 +4,6 @@ import { IndexeddbPersistence } from "y-indexeddb";
 
 export type YjsClient = {
   doc: Y.Doc;
-  yText: Y.Text;
   wsProvider: WebsocketProvider;
   idb: IndexeddbPersistence;
   destroy: () => void;
@@ -17,10 +16,6 @@ const WS_URL = "ws://localhost:1234";
 // down and rebuild it (logout / token change). One call === one logical session.
 export function createYjsClient(roomName: string, token: string): YjsClient {
   const doc = new Y.Doc();
-
-  // NOTE: key is "shared" to match the existing doc/IndexedDB cache and any
-  // content already persisted on the server. 
-  const yText = doc.getText("shared");
 
   // IndexedDB persistence: rehydrates `doc` from the local cache, so content
   // shows on first paint before the server round-trip completes.
@@ -35,7 +30,6 @@ export function createYjsClient(roomName: string, token: string): YjsClient {
   // Dev hooks — poke at live state from the console. Dev builds only.
   if (import.meta.env.DEV) {
     (window as any).doc = doc;
-    (window as any).yText = yText;
     (window as any).wsProvider = wsProvider;
     (window as any).idb = idb;
   }
@@ -46,7 +40,7 @@ export function createYjsClient(roomName: string, token: string): YjsClient {
     doc.destroy();
   };
 
-  return { doc, yText, wsProvider, idb, destroy };
+  return { doc, wsProvider, idb, destroy };
 }
 
 // Decode a JWT payload client-side for DISPLAY ONLY (no signature check — the

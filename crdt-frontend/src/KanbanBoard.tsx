@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { createYjsClient, decodeJwtPayload, type YjsClient } from "./yjs";
+import { DebugBoard } from "./DebugBoard";
+import { type Identity } from "./board-model";
 
 export function KanbanBoard({
   token,
@@ -17,7 +19,6 @@ export function KanbanBoard({
   onNotMember: () => void;
 }) {
   const [client, setClient] = useState<YjsClient | null>(null);
-  const [text, setText] = useState("");
   const [onlineUsers, setOnlineUsers] = useState<
     { id: string; name: string; color: string }[]
   >([]);
@@ -48,8 +49,10 @@ export function KanbanBoard({
       localStorage.removeItem("token");
       window.location.reload();
     };
-    const handleConnectionClose = (event: CloseEvent) => {
-      if (event.code === 4003) {
+    const handleConnectionClose = (event: CloseEvent | null) => {
+      // A manual wsProvider.disconnect() (the Offline button) fires this with a
+      // null event — there's no real CloseEvent for a deliberate local close.
+      if (event?.code === 4003) {
         onNotMember();
       }
     };
@@ -63,26 +66,6 @@ export function KanbanBoard({
       setClient(null);
     };
   }, [token, boardId]);
-
-  // Textarea binding — bidirectional. Preserved from the original App.tsx:
-  // controlled component + minimal-span diff so concurrent edits MERGE instead
-  // of one side clobbering the whole doc on every keystroke.
-  useEffect(() => {
-    if (!client) return;
-    const { yText } = client;
-
-    // Seed from whatever is already in the doc. observe() only fires on FUTURE
-    // changes, so content that loaded fast from IndexedDB before this effect ran
-    // would otherwise be missed and the textarea would stay empty.
-    setText(yText.toString());
-
-    const onChange = () => setText(yText.toString());
-    yText.observe(onChange);
-
-    return () => {
-      yText.unobserve(onChange);
-    };
-  }, [client]);
 
   // Online presence via awareness. Every client publishes its `user` field
   // (set above from the JWT); awareness.getStates() is the union of everyone's.
@@ -118,12 +101,15 @@ export function KanbanBoard({
       </div>
     );
 
-  const { doc, yText, wsProvider } = client;
+  const { doc, wsProvider } = client;
   const identity = decodeJwtPayload(token);
+  const userIdentity: Identity = identity
+    ? { id: identity.sub, name: identity.name }
+    : { id: "anonymous", name: "Anonymous" };
 
   return (
     <div
-      style={{ maxWidth: 800, margin: "40px auto", fontFamily: "system-ui" }}
+      style={{ maxWidth: 1200, margin: "40px auto", fontFamily: "system-ui" }}
     >
       <div
         style={{
@@ -144,41 +130,9 @@ export function KanbanBoard({
       </div>
 
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-        <textarea
-          style={{ flex: 1, height: 300, fontFamily: "monospace" }}
-          value={text}
-          onChange={(e) => {
-            const next = e.target.value;
-            const prev = yText.toString();
-
-            // Edit only the span that actually changed (common prefix + common
-            // suffix) instead of replacing the whole text. Prevents wiping the doc
-            // and lets concurrent edits merge instead of clobbering.
-            let start = 0;
-            while (
-              start < prev.length &&
-              start < next.length &&
-              prev[start] === next[start]
-            )
-              start++;
-            let endPrev = prev.length,
-              endNext = next.length;
-            while (
-              endPrev > start &&
-              endNext > start &&
-              prev[endPrev - 1] === next[endNext - 1]
-            ) {
-              endPrev--;
-              endNext--;
-            }
-
-            doc.transact(() => {
-              if (endPrev > start) yText.delete(start, endPrev - start);
-              if (endNext > start)
-                yText.insert(start, next.slice(start, endNext));
-            });
-          }}
-        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <DebugBoard doc={doc} identity={userIdentity} />
+        </div>
 
         <aside style={{ width: 200, flexShrink: 0 }}>
           <div style={{ fontWeight: 600, marginBottom: 8 }}>
