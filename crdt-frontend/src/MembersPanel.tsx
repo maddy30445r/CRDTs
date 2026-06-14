@@ -77,9 +77,9 @@ export function MembersPanel({
     // Full-screen layer. Clicking the backdrop closes; clicking the panel does
     // NOT (stopPropagation), so interacting inside the panel won't dismiss it.
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/50" />
+      <div className="absolute inset-0 bg-black/50 animate-fade-in" />
       <div
-        className="relative w-80 h-full bg-neutral-900 border-l border-neutral-800 p-4 overflow-y-auto"
+        className="relative w-80 h-full bg-neutral-900 border-l border-neutral-800 p-4 overflow-y-auto animate-slide-in elev-panel"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -95,7 +95,7 @@ export function MembersPanel({
         {error && <div className="text-xs text-red-400 mb-3">{error}</div>}
 
         {members === null ? (
-          <div className="text-xs text-neutral-500">Loading…</div>
+          <div className="text-xs text-neutral-500">Loading members…</div>
         ) : (
           <ul className="space-y-1.5 mb-4">
             {members.map((m) => (
@@ -143,7 +143,7 @@ export function MembersPanel({
               <button
                 onClick={handleAdd}
                 disabled={busy || !addName.trim()}
-                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 rounded text-xs font-medium text-white transition-colors"
+                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] disabled:bg-neutral-800 disabled:text-neutral-500 disabled:active:scale-100 rounded-md text-xs font-medium text-white t-base focus-visible:ring-1 focus-visible:ring-indigo-500 focus-visible:outline-none"
               >
                 Add
               </button>

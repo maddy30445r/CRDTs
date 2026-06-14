@@ -18,11 +18,15 @@ export function ColumnView({
   column,
   cards,
   identity,
+  onOpenDetail,
+  memberNames,
 }: {
   doc: Y.Doc;
   column: Column;
   cards: Card[];
   identity: Identity;
+  onOpenDetail?: (cardId: string) => void;
+  memberNames?: Map<string, string>;
 }) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
@@ -44,8 +48,8 @@ export function ColumnView({
   };
 
   return (
-    <div className="flex-shrink-0 w-72 bg-neutral-900 rounded-lg border border-neutral-800 flex flex-col max-h-full">
-      <div className="px-3 py-2 flex items-center justify-between border-b border-neutral-800">
+    <div className="flex-shrink-0 w-72 bg-neutral-900 rounded-lg border border-neutral-800 flex flex-col max-h-full t-base">
+      <div className="px-3 py-2.5 flex items-center justify-between border-b border-neutral-800">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <InlineEdit
             value={column.title}
@@ -53,7 +57,7 @@ export function ColumnView({
             className="text-sm font-medium text-neutral-100 truncate"
             placeholder="Column"
           />
-          <span className="text-xs text-neutral-500 flex-shrink-0">
+          <span className="text-xs text-neutral-500 flex-shrink-0 bg-neutral-800/60 rounded-full px-1.5 min-w-5 text-center">
             {cards.length}
           </span>
         </div>
@@ -76,19 +80,27 @@ export function ColumnView({
 
       <div
         ref={setDroppableRef}
-        className="flex-1 overflow-y-auto px-2 py-2 space-y-2 min-h-0"
+        className="flex-1 overflow-y-auto px-2 py-2 space-y-2.5 min-h-0"
       >
         <SortableContext
           items={cards.map((c) => c.id)}
           strategy={verticalListSortingStrategy}
         >
           {cards.length === 0 && (
-            <div className="text-xs text-neutral-600 text-center py-6 border border-dashed border-neutral-800 rounded">
-              Drop here
+            <div className="text-xs text-neutral-600 text-center py-6 border border-dashed border-neutral-800 rounded-md">
+              Drop a card here
             </div>
           )}
           {cards.map((c) => (
-            <SortableCard key={c.id} doc={doc} card={c} />
+            <SortableCard
+              key={c.id}
+              doc={doc}
+              card={c}
+              onOpenDetail={onOpenDetail}
+              assigneeName={
+                c.assigneeId ? memberNames?.get(c.assigneeId) : undefined
+              }
+            />
           ))}
         </SortableContext>
       </div>
@@ -113,7 +125,7 @@ export function ColumnView({
             <div className="flex gap-2">
               <button
                 onClick={commitAdd}
-                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 rounded text-xs font-medium text-white transition-colors"
+                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] rounded-md text-xs font-medium text-white t-base focus-visible:ring-1 focus-visible:ring-indigo-500 focus-visible:outline-none"
               >
                 Add
               </button>
@@ -122,7 +134,7 @@ export function ColumnView({
                   setAdding(false);
                   setDraft("");
                 }}
-                className="px-2.5 py-1 text-neutral-400 hover:text-neutral-100 text-xs transition-colors"
+                className="px-2.5 py-1 text-neutral-400 hover:text-neutral-100 text-xs t-base"
               >
                 Cancel
               </button>
@@ -131,7 +143,7 @@ export function ColumnView({
         ) : (
           <button
             onClick={() => setAdding(true)}
-            className="w-full text-left text-sm text-neutral-500 hover:text-neutral-200 px-2 py-1.5 rounded hover:bg-neutral-800/50 transition-colors"
+            className="w-full text-left text-sm text-neutral-500 hover:text-neutral-200 px-2 py-1.5 rounded-md hover:bg-neutral-800 t-base"
           >
             + Add card
           </button>

@@ -26,6 +26,9 @@ export type Card = {
   sortKey: string;
   createdAt: number;
   createdBy: string;
+  description?: string; // NEW
+  dueDate?: string; // NEW — ISO date "YYYY-MM-DD", or undefined
+  assigneeId?: string; // NEW — board member userId, or undefined
 };
 
 export type Identity = { id: string; name: string; color: string };
@@ -216,6 +219,44 @@ export function renameCard(doc: y.Doc, cardId: string, title: string): void {
   const existing = cards.get(cardId);
   if (!existing) return;
   doc.transact(() => cards.set(cardId, { ...existing, title }));
+}
+
+// Generic whole-card field updater. Spread-and-set: same LWW shape as renameCard,
+// but for any subset of fields. New optional fields (description/dueDate/assignee)
+// ride through here without touching move/sort logic.
+export function updateCard(
+  doc: y.Doc,
+  cardId: string,
+  patch: Partial<Omit<Card, "id">>,
+): void {
+  const cards = getCardsMap(doc);
+  const existing = cards.get(cardId);
+  if (!existing) return;
+  doc.transact(() => cards.set(cardId, { ...existing, ...patch }));
+}
+
+export function setCardDescription(
+  doc: y.Doc,
+  cardId: string,
+  description: string,
+): void {
+  updateCard(doc, cardId, { description });
+}
+
+export function setCardDueDate(
+  doc: y.Doc,
+  cardId: string,
+  dueDate: string | undefined,
+): void {
+  updateCard(doc, cardId, { dueDate });
+}
+
+export function setCardAssignee(
+  doc: y.Doc,
+  cardId: string,
+  assigneeId: string | undefined,
+): void {
+  updateCard(doc, cardId, { assigneeId });
 }
 
 export function deleteCard(doc: y.Doc, cardId: string): void {

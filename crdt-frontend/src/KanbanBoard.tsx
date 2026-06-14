@@ -98,7 +98,12 @@ export function KanbanBoard({
       {debugMode ? (
         <DebugBoard doc={client.doc} identity={userIdentity} />
       ) : (
-        <BoardView client={client} identity={userIdentity} />
+        <BoardView
+          client={client}
+          identity={userIdentity}
+          token={token}
+          boardId={boardId}
+        />
       )}
     </div>
   );

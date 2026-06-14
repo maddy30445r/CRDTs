@@ -53,13 +53,18 @@ export function BoardPicker({
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100">
-      <div className="max-w-xl mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold">Your boards</h2>
+    <div className="min-h-screen text-neutral-100">
+      <div className="max-w-2xl mx-auto px-6 py-10">
+        <div className="flex items-center justify-between mb-7">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Your boards</h1>
+            <p className="text-sm text-neutral-500 mt-0.5">
+              Pick a board or start a new one
+            </p>
+          </div>
           <button
             onClick={onLogout}
-            className="text-sm text-neutral-400 hover:text-neutral-100 transition-colors"
+            className="text-sm text-neutral-400 hover:text-neutral-100 rounded-md px-2 py-1 hover:bg-neutral-800/60 t-base focus-visible:ring-1 focus-visible:ring-indigo-500 focus-visible:outline-none"
           >
             Log out
           </button>
@@ -89,7 +94,7 @@ export function BoardPicker({
               <div className="flex gap-2">
                 <button
                   onClick={handleCreate}
-                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 rounded text-xs font-medium text-white transition-colors"
+                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] rounded-md text-xs font-medium text-white t-base focus-visible:ring-1 focus-visible:ring-indigo-500 focus-visible:outline-none"
                 >
                   Create
                 </button>
@@ -108,7 +113,7 @@ export function BoardPicker({
           ) : (
             <button
               onClick={() => setCreating(true)}
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded text-sm font-medium text-white transition-colors"
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] rounded-md text-sm font-medium text-white t-base focus-visible:ring-1 focus-visible:ring-indigo-500 focus-visible:outline-none"
             >
               + New board
             </button>
@@ -126,22 +131,39 @@ export function BoardPicker({
         )}
 
         {boards !== null && boards.length === 0 && (
-          <div className="text-neutral-500 text-sm">
-            You're not a member of any boards yet. Ask an admin to add you.
+          <div className="text-center py-16 border border-dashed border-neutral-800 rounded-xl">
+            <div className="text-neutral-300 text-sm font-medium">
+              No boards yet
+            </div>
+            <div className="text-neutral-500 text-xs mt-1">
+              Create one with “+ New board” to get started.
+            </div>
           </div>
         )}
 
         {boards !== null && boards.length > 0 && (
-          <ul className="space-y-2">
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {boards.map((b) => (
               <li key={b.id}>
                 <button
                   onClick={() => onPick(b.id, b.name)}
-                  className="w-full text-left p-3 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 rounded transition-colors"
+                  className="group w-full text-left p-4 bg-neutral-900/70 hover:bg-neutral-800/80 border border-neutral-800 hover:border-neutral-700 rounded-xl elev-card hover:elev-card-hover hover:-translate-y-px t-base focus-visible:ring-1 focus-visible:ring-indigo-500 focus-visible:outline-none"
                 >
-                  <div className="font-medium text-neutral-100">{b.name}</div>
-                  <div className="text-xs text-neutral-500 mt-1 font-mono">
-                    {b.id}
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-sm font-semibold text-indigo-300 flex-shrink-0">
+                      {b.name?.[0]?.toUpperCase() ?? "?"}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-medium text-neutral-100 truncate">
+                        {b.name}
+                      </div>
+                      <div className="text-xs text-neutral-500 mt-0.5 font-mono truncate">
+                        {b.id}
+                      </div>
+                    </div>
+                    <span className="ml-auto text-neutral-600 group-hover:text-neutral-300 t-base">
+                      →
+                    </span>
                   </div>
                 </button>
               </li>

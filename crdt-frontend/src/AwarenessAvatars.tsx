@@ -35,7 +35,7 @@ export function AwarenessAvatars({
   });
 
   if (others.length === 0) {
-    return <div className="text-xs text-neutral-500">no one else here</div>;
+    return <div className="text-xs text-neutral-500">Only you</div>;
   }
 
   return (

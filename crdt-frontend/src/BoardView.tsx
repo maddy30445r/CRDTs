@@ -13,6 +13,8 @@ import {
 import { arrayMove } from "@dnd-kit/sortable";
 import { ColumnView } from "./ColumnView";
 import { CardView } from "./CardView";
+import { CardDetailPanel } from "./CardDetailPanel";
+import { fetchMembers } from "./api";
 import {
   createColumn,
   getCardsInColumn,
@@ -29,13 +31,38 @@ import type { YjsClient } from "./yjs";
 export function BoardView({
   client,
   identity,
+  token,
+  boardId,
 }: {
   client: YjsClient;
   identity: Identity;
+  token: string;
+  boardId: string;
 }) {
   const [, setTick] = useState(0);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
+
+  // Card detail panel: which card is open, and userId→name for assignee labels.
+  const [openCardId, setOpenCardId] = useState<string | null>(null);
+  const [memberNames, setMemberNames] = useState<Map<string, string>>(
+    new Map(),
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchMembers(token, boardId)
+      .then(({ members }) => {
+        if (cancelled) return;
+        setMemberNames(new Map(members.map((m) => [m.user_id, m.name])));
+      })
+      .catch(() => {
+        /* non-fatal: cards just show raw id / no name tooltip */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, boardId]);
 
   // --- drag state ---
   // draggingRef: read synchronously inside the observer to gate re-renders.
@@ -233,11 +260,24 @@ export function BoardView({
   if (columns.length === 0 && !adding) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-neutral-400 mb-4">This board is empty.</p>
+        <div className="text-center max-w-xs">
+          <div className="mx-auto mb-5 w-12 h-12 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-600">
+            {/* simple board glyph */}
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <rect x="3" y="4" width="5" height="16" rx="1.5" fill="currentColor" opacity="0.5" />
+              <rect x="9.5" y="4" width="5" height="11" rx="1.5" fill="currentColor" opacity="0.5" />
+              <rect x="16" y="4" width="5" height="7" rx="1.5" fill="currentColor" opacity="0.5" />
+            </svg>
+          </div>
+          <h2 className="text-base font-semibold text-neutral-100">
+            This board is empty
+          </h2>
+          <p className="text-sm text-neutral-500 mt-1 mb-5">
+            Columns hold your cards. Add one to start organizing work.
+          </p>
           <button
             onClick={() => setAdding(true)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded text-sm font-medium text-white transition-colors"
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] rounded-md text-sm font-medium text-white t-base focus-visible:ring-1 focus-visible:ring-indigo-500 focus-visible:outline-none"
           >
             + Create your first column
           </button>
@@ -256,7 +296,7 @@ export function BoardView({
       onDragCancel={handleDragCancel}
     >
       <div className="flex-1 overflow-x-auto overflow-y-hidden">
-        <div className="flex gap-3 p-4 h-full items-start">
+        <div className="flex gap-4 p-4 h-full items-start">
           {columns.map((col) => (
             <ColumnView
               key={col.id}
@@ -264,6 +304,8 @@ export function BoardView({
               column={col}
               cards={cardsFor(col.id)}
               identity={identity}
+              onOpenDetail={setOpenCardId}
+              memberNames={memberNames}
             />
           ))}
 
@@ -288,7 +330,7 @@ export function BoardView({
                 <div className="flex gap-2">
                   <button
                     onClick={commitAddColumn}
-                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 rounded text-xs font-medium text-white transition-colors"
+                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] rounded-md text-xs font-medium text-white t-base focus-visible:ring-1 focus-visible:ring-indigo-500 focus-visible:outline-none"
                   >
                     Add
                   </button>
@@ -306,7 +348,7 @@ export function BoardView({
             ) : (
               <button
                 onClick={() => setAdding(true)}
-                className="w-full bg-neutral-900/40 hover:bg-neutral-900 rounded-lg border border-dashed border-neutral-800 hover:border-neutral-700 px-3 py-3 text-sm text-neutral-500 hover:text-neutral-300 transition-colors text-left"
+                className="w-full bg-neutral-900/40 hover:bg-neutral-900 rounded-lg border border-dashed border-neutral-800 hover:border-neutral-700 px-3 py-3 text-sm text-neutral-500 hover:text-neutral-300 t-base text-left"
               >
                 + Add column
               </button>
@@ -318,11 +360,23 @@ export function BoardView({
       {/* Floating card that follows the cursor during a drag. */}
       <DragOverlay>
         {activeCard ? (
-          <div className="rotate-3 opacity-90">
+          <div className="rotate-2 elev-drag rounded-lg">
             <CardView doc={client.doc} card={activeCard} />
           </div>
         ) : null}
       </DragOverlay>
+
+      {/* Card detail slide-over. Reads the card LIVE from the Y.Map (not the
+          drag snapshot) — it's never open during a drag. */}
+      {openCardId && (
+        <CardDetailPanel
+          doc={client.doc}
+          cardId={openCardId}
+          token={token}
+          boardId={boardId}
+          onClose={() => setOpenCardId(null)}
+        />
+      )}
     </DndContext>
   );
 }

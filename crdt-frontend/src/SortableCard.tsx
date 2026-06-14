@@ -10,7 +10,17 @@ import type { Card } from "./board-model";
  * The whole card is the drag handle; the 5px pointer activation constraint
  * (set on the sensor in BoardView) keeps click-to-edit on the title working.
  */
-export function SortableCard({ doc, card }: { doc: Y.Doc; card: Card }) {
+export function SortableCard({
+  doc,
+  card,
+  onOpenDetail,
+  assigneeName,
+}: {
+  doc: Y.Doc;
+  card: Card;
+  onOpenDetail?: (cardId: string) => void;
+  assigneeName?: string;
+}) {
   const {
     attributes,
     listeners,
@@ -33,7 +43,12 @@ export function SortableCard({ doc, card }: { doc: Y.Doc; card: Card }) {
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <CardView doc={doc} card={card} />
+      <CardView
+        doc={doc}
+        card={card}
+        onOpenDetail={onOpenDetail}
+        assigneeName={assigneeName}
+      />
     </div>
   );
 }
