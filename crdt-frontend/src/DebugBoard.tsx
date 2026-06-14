@@ -33,15 +33,7 @@ export function DebugBoard({
   // the Y.Maps, not here. We read it fresh every render via the selectors below.
   const [, setTick] = useState(0);
 
-  // TODO: write this effect — the heart of the component.
-  //   - get columns map and cards map from doc
-  //   - onChange = () => setTick(t => t + 1)      // doorbell: "something changed, re-render"
-  //   - observe BOTH maps with onChange  (columns.observe / cards.observe)
-  //   - cleanup: unobserve BOTH
-  //   - dependency array: [doc]
-  //   WHY observe the MAPS (not individual cards)? one observer catches every
-  //   local AND remote change to any column/card. Granular per-card observers
-  //   are a K2/K3 perf concern, not needed here.
+  // Observe BOTH maps → one re-render on any local or remote column/card change.
   useEffect(() => {
     const columns = getColumnsMap(doc);
     const cards = getCardsMap(doc);

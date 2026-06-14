@@ -1,20 +1,28 @@
+import { useState } from "react";
 import type { WebsocketProvider } from "y-websocket";
 import { AwarenessAvatars } from "./AwarenessAvatars";
+import { MembersPanel } from "./MembersPanel";
 import type { Identity } from "./board-model";
 
 export function Header({
   boardId,
+  boardName,
   identity,
   wsProvider,
+  token,
   onLeaveBoard,
   onLogout,
 }: {
-  boardId: string;
+  boardId: string; // the real id — used for the members API
+  boardName?: string | null; // display label
   identity: Identity;
   wsProvider: WebsocketProvider;
+  token: string;
   onLeaveBoard: () => void;
   onLogout: () => void;
 }) {
+  const [showMembers, setShowMembers] = useState(false);
+
   return (
     <header className="flex-shrink-0 border-b border-neutral-800 bg-neutral-950">
       <div className="px-4 py-2.5 flex items-center justify-between">
@@ -26,7 +34,15 @@ export function Header({
             ← Boards
           </button>
           <div className="h-4 w-px bg-neutral-800" />
-          <span className="text-sm font-medium text-neutral-100">{boardId}</span>
+          <span className="text-sm font-medium text-neutral-100">
+            {boardName ?? boardId}
+          </span>
+          <button
+            onClick={() => setShowMembers(true)}
+            className="text-sm text-neutral-400 hover:text-neutral-100 transition-colors"
+          >
+            Members
+          </button>
         </div>
         <div className="flex items-center gap-4">
           <AwarenessAvatars wsProvider={wsProvider} currentUserId={identity.id} />
@@ -48,6 +64,15 @@ export function Header({
           </div>
         </div>
       </div>
+
+      {showMembers && (
+        <MembersPanel
+          token={token}
+          boardId={boardId}
+          currentUserId={identity.id}
+          onClose={() => setShowMembers(false)}
+        />
+      )}
     </header>
   );
 }

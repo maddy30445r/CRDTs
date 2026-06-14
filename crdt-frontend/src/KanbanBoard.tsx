@@ -87,9 +87,11 @@ export function KanbanBoard({
   return (
     <div className="h-screen flex flex-col bg-neutral-950 text-neutral-100">
       <Header
-        boardId={boardName ?? boardId}
+        boardId={boardId}
+        boardName={boardName}
         identity={userIdentity}
         wsProvider={client.wsProvider}
+        token={token}
         onLeaveBoard={onLeaveBoard}
         onLogout={onLogout}
       />

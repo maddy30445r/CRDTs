@@ -35,9 +35,7 @@ export function ColumnView({
     data: { type: "column", columnId: column.id },
   });
 
-  // commitAdd: trim the draft; if non-empty, createCard(doc, column.id, title, identity).
-  // Then clear the draft and exit "adding" mode (whether or not it was empty).
-  // TODO: write this.
+  // Add a card to this column from the draft, then reset the add form.
   const commitAdd = () => {
     const finalDraft = draft.trim();
     if (finalDraft) createCard(doc, column.id, finalDraft, identity);
