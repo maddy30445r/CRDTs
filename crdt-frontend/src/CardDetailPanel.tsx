@@ -10,6 +10,7 @@ import {
 } from "./board-model";
 import { fetchMembers, type Member } from "./api";
 import { colorForUser, initialFor } from "./avatar";
+import { CardLabelPicker } from "./labels-ui";
 
 export function CardDetailPanel({
   doc,
@@ -111,6 +112,12 @@ export function CardDetailPanel({
         rows={5}
         className="w-full bg-neutral-800 rounded px-2.5 py-2 text-sm outline-none focus:ring-1 focus:ring-indigo-500 text-neutral-100 resize-y mb-4"
       />
+
+      {/* Labels */}
+      <label className="block text-xs text-neutral-500 mb-1">Labels</label>
+      <div className="mb-4">
+        <CardLabelPicker doc={doc} cardId={cardId} />
+      </div>
 
       {/* Due date */}
       <label className="block text-xs text-neutral-500 mb-1">Due date</label>

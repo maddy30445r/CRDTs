@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Env files — values are public but kept out of git; commit .env.example instead
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

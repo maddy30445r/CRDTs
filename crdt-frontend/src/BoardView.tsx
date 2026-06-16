@@ -6,27 +6,52 @@ import {
   useSensor,
   useSensors,
   closestCorners,
+  type CollisionDetection,
   type DragStartEvent,
   type DragOverEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { arrayMove } from "@dnd-kit/sortable";
+import {
+  arrayMove,
+  SortableContext,
+  horizontalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { ColumnView } from "./ColumnView";
 import { CardView } from "./CardView";
 import { CardDetailPanel } from "./CardDetailPanel";
 import { fetchMembers } from "./api";
 import {
   createColumn,
+  getCardLabelsMap,
   getCardsInColumn,
   getCardsMap,
   getColumnsMap,
   getColumnsSorted,
+  getLabelsMap,
   moveCard,
+  moveColumn,
+  paletteEntry,
   type Card,
   type Column,
   type Identity,
 } from "./board-model";
 import type { YjsClient } from "./yjs";
+
+// Collision detection: while dragging a COLUMN, only consider the column
+// sortable items (id === column.id) — exclude cards and the "column:<id>" body
+// droppables. Otherwise closestCorners picks a card/body, which isn't in the
+// columns SortableContext, so dnd-kit never shifts the columns. Card drags fall
+// through to the default closestCorners.
+const boardCollisionDetection: CollisionDetection = (args) => {
+  if (args.active.data.current?.type === "column") {
+    const columnItems = args.droppableContainers.filter(
+      (c) =>
+        c.data.current?.type === "column" && !String(c.id).startsWith("column:"),
+    );
+    return closestCorners({ ...args, droppableContainers: columnItems });
+  }
+  return closestCorners(args);
+};
 
 export function BoardView({
   client,
@@ -77,6 +102,11 @@ export function BoardView({
   } | null>(null);
   // The card currently under the cursor — rendered in the DragOverlay.
   const [activeCard, setActiveCard] = useState<Card | null>(null);
+  // Column drag state — mirrors the card snapshot/active pattern. columnSnapshot
+  // is the optimistic column order during a column drag; activeColumn drives its
+  // DragOverlay.
+  const [activeColumn, setActiveColumn] = useState<Column | null>(null);
+  const [columnSnapshot, setColumnSnapshot] = useState<Column[] | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -89,10 +119,11 @@ export function BoardView({
   useEffect(() => {
     const columns = getColumnsMap(client.doc);
     const cards = getCardsMap(client.doc);
+    const cardLabels = getCardLabelsMap(client.doc);
+    const labels = getLabelsMap(client.doc);
     const onChange = () => {
-      // TODO (idea 1 — the drag gate):
-      //   If draggingRef.current is true, DON'T re-render mid-drag. Instead set
-      //   pendingRemoteRef.current = true and return early. Otherwise bump the tick.
+      // The drag gate: don't re-render mid-drag. Stash that a remote change
+      // arrived and bail; handleDragEnd re-syncs from live truth on drop.
       if (draggingRef.current == true) {
         pendingRemoteRef.current = true;
         return;
@@ -101,9 +132,16 @@ export function BoardView({
     };
     columns.observe(onChange);
     cards.observe(onChange);
+    // observeDeep: cardLabels values are themselves Y.Maps, so a shallow observe
+    // would miss key changes (label add/remove) INSIDE an existing card's set.
+    cardLabels.observeDeep(onChange);
+    // labels registry: rename/recolor/create/delete repaint card faces + picker.
+    labels.observe(onChange);
     return () => {
       columns.unobserve(onChange);
       cards.unobserve(onChange);
+      cardLabels.unobserveDeep(onChange);
+      labels.unobserve(onChange);
     };
   }, [client.doc]);
 
@@ -112,8 +150,13 @@ export function BoardView({
   const liveCardsMap = getCardsMap(client.doc);
 
   // Render source: snapshot while dragging (so the DOM stays stable under
-  // @dnd-kit), live Y.Map reads otherwise.
-  const columns = snapshot ? snapshot.columns : liveColumns;
+  // @dnd-kit), live Y.Map reads otherwise. Column-drag snapshot wins if present,
+  // else the card-drag snapshot's columns, else live.
+  const columns = columnSnapshot
+    ? columnSnapshot
+    : snapshot
+      ? snapshot.columns
+      : liveColumns;
   const cardsFor = (columnId: string): Card[] =>
     snapshot
       ? (snapshot.cardsByColumn.get(columnId) ?? [])
@@ -133,13 +176,19 @@ export function BoardView({
   // --- drag handlers ---
 
   const handleDragStart = (event: DragStartEvent) => {
-    // TODO (idea 2 — capture the snapshot):
-    //   1. const card = event.active.data.current?.card as Card | undefined; if (!card) return;
-    //   2. draggingRef.current = true; pendingRemoteRef.current = false; setActiveCard(card);
-    //   3. Build the snapshot from LIVE state right now:
-    //        - cols = getColumnsSorted(getColumnsMap(client.doc))
-    //        - map = new Map<string, Card[]>(); for each col: map.set(col.id, getCardsInColumn(cardsMap, col.id))
-    //        - setSnapshot({ columns: cols, cardsByColumn: map })
+    const type = event.active.data.current?.type;
+
+    // Column drag: snapshot the column order for optimistic reorder.
+    if (type === "column") {
+      const column = event.active.data.current?.column as Column | undefined;
+      draggingRef.current = true;
+      pendingRemoteRef.current = false;
+      setActiveColumn(column ?? null);
+      setColumnSnapshot(getColumnsSorted(getColumnsMap(client.doc)));
+      return;
+    }
+
+    // Card drag: snapshot columns + cards-per-column from LIVE state.
     const card = event.active.data.current?.card as Card | undefined;
     if (!card) return;
     draggingRef.current = true;
@@ -156,6 +205,15 @@ export function BoardView({
   // PROVIDED — optimistic reorder (idea 3). Mutates ONLY the snapshot; no Yjs
   // writes. Read this to understand how the cards shift as you drag over slots.
   const handleDragOver = (event: DragOverEvent) => {
+    const type = event.active.data.current?.type;
+
+    // Column drag: do NOTHING here. Columns are a single horizontal
+    // SortableContext, so dnd-kit shifts the other columns natively via
+    // transforms. Manually reordering columnSnapshot here would fight those
+    // transforms and cause the phantom to stick / oscillate. The final order is
+    // computed once on drop (handleDragEnd).
+    if (type === "column") return;
+
     if (!snapshot) return;
     const activeId = event.active.id as string;
     const overId = event.over?.id as string | undefined;
@@ -211,7 +269,50 @@ export function BoardView({
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
+    const type = event.active.data.current?.type;
     const activeId = event.active.id as string;
+
+    // Column drag: compute the final order from the drop target, then commit
+    // with a single moveColumn write. columnSnapshot is the frozen original
+    // order (we never mutated it during the drag).
+    if (type === "column") {
+      const snap = columnSnapshot;
+      setActiveColumn(null);
+      draggingRef.current = false;
+      if (snap) {
+        // Resolve the destination column id. over can be a column (sortable id
+        // or "column:<id>" body) or a CARD inside one (use its columnId).
+        const overData = event.over?.data.current;
+        let overColId: string | null = null;
+        if (overData?.type === "column") {
+          overColId =
+            (overData.columnId as string | undefined) ??
+            (event.over!.id as string);
+        } else if (overData?.type === "card") {
+          overColId = (overData.card as Card | undefined)?.columnId ?? null;
+        }
+
+        if (overColId && overColId !== activeId) {
+          const oldIndex = snap.findIndex((c) => c.id === activeId);
+          const newIndex = snap.findIndex((c) => c.id === overColId);
+          if (oldIndex !== -1 && newIndex !== -1) {
+            const reordered = arrayMove(snap, oldIndex, newIndex);
+            const idx = reordered.findIndex((c) => c.id === activeId);
+            // index → beforeColumnId: the column AFTER ours, or null if last.
+            const beforeColumnId =
+              idx >= 0 && idx < reordered.length - 1
+                ? reordered[idx + 1].id
+                : null;
+            moveColumn(client.doc, activeId, beforeColumnId);
+          }
+        }
+      }
+      setColumnSnapshot(null);
+      pendingRemoteRef.current = false;
+      setTick((t) => t + 1);
+      return;
+    }
+
     const snap = snapshot;
 
     // Clear drag UI first so the gate resets on every exit path.
@@ -243,8 +344,10 @@ export function BoardView({
 
   const handleDragCancel = () => {
     setActiveCard(null);
+    setActiveColumn(null);
     draggingRef.current = false;
     setSnapshot(null);
+    setColumnSnapshot(null);
     pendingRemoteRef.current = false;
     setTick((t) => t + 1);
   };
@@ -289,7 +392,7 @@ export function BoardView({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={boardCollisionDetection}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
@@ -297,17 +400,24 @@ export function BoardView({
     >
       <div className="flex-1 overflow-x-auto overflow-y-hidden">
         <div className="flex gap-4 p-4 h-full items-start">
-          {columns.map((col) => (
-            <ColumnView
-              key={col.id}
-              doc={client.doc}
-              column={col}
-              cards={cardsFor(col.id)}
-              identity={identity}
-              onOpenDetail={setOpenCardId}
-              memberNames={memberNames}
-            />
-          ))}
+          {/* Columns are a horizontal sortable list. The "+ Add column" tile
+              below stays OUTSIDE — it's not a sortable item. */}
+          <SortableContext
+            items={columns.map((c) => c.id)}
+            strategy={horizontalListSortingStrategy}
+          >
+            {columns.map((col) => (
+              <ColumnView
+                key={col.id}
+                doc={client.doc}
+                column={col}
+                cards={cardsFor(col.id)}
+                identity={identity}
+                onOpenDetail={setOpenCardId}
+                memberNames={memberNames}
+              />
+            ))}
+          </SortableContext>
 
           {/* "Add column" — input form when adding, dashed button otherwise. */}
           <div className="flex-shrink-0 w-72">
@@ -357,11 +467,27 @@ export function BoardView({
         </div>
       </div>
 
-      {/* Floating card that follows the cursor during a drag. */}
+      {/* Floating card/column that follows the cursor during a drag. */}
       <DragOverlay>
         {activeCard ? (
           <div className="rotate-2 elev-drag rounded-lg">
             <CardView doc={client.doc} card={activeCard} />
+          </div>
+        ) : activeColumn ? (
+          <div className="elev-drag rounded-lg opacity-95 overflow-hidden">
+            {activeColumn.accentColor && (
+              <div
+                className="h-1"
+                style={{
+                  backgroundColor: paletteEntry(activeColumn.accentColor).dot,
+                }}
+              />
+            )}
+            <div className="w-72 bg-neutral-900 border border-neutral-800 px-3 py-2.5">
+              <span className="text-sm font-medium text-neutral-100">
+                {activeColumn.title}
+              </span>
+            </div>
           </div>
         ) : null}
       </DragOverlay>

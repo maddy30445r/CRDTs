@@ -1,13 +1,21 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import * as Y from "yjs";
 import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { InlineEdit } from "./InlineEdit";
 import { SortableCard } from "./SortableCard";
 import {
   createCard,
   deleteColumn,
+  paletteEntry,
   renameColumn,
+  setColumnAccent,
+  PALETTE,
   type Card,
   type Column,
   type Identity,
@@ -31,6 +39,25 @@ export function ColumnView({
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
 
+  // Makes the whole column a sortable item in BoardView's horizontal columns
+  // list. type:"column" lets the shared drag handlers branch (vs type:"card").
+  // listeners are attached to the header GRIP only, so the rest of the header
+  // (title, accent, delete) stays clickable and card drags are unaffected.
+  const {
+    setNodeRef: setSortableRef,
+    attributes,
+    listeners,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: column.id, data: { type: "column", column } });
+
+  const sortableStyle: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
   // Makes the column body a drop target, so a card can be dropped into an empty
   // column (or its blank area). id is namespaced "column:<id>" so BoardView's
   // handlers can tell a column-drop from a card-drop.
@@ -48,9 +75,29 @@ export function ColumnView({
   };
 
   return (
-    <div className="flex-shrink-0 w-72 bg-neutral-900 rounded-lg border border-neutral-800 flex flex-col max-h-full t-base">
+    <div
+      ref={setSortableRef}
+      style={sortableStyle}
+      className="flex-shrink-0 w-72 bg-neutral-900 rounded-lg border border-neutral-800 flex flex-col max-h-full t-base overflow-hidden"
+    >
+      {/* Accent bar — thin top stripe driven by the shared palette. */}
+      {column.accentColor && (
+        <div
+          className="h-1"
+          style={{ backgroundColor: paletteEntry(column.accentColor).dot }}
+        />
+      )}
       <div className="px-3 py-2.5 flex items-center justify-between border-b border-neutral-800">
         <div className="flex items-center gap-2 min-w-0 flex-1">
+          {/* Grip — the ONLY column drag handle. */}
+          <span
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing text-neutral-600 hover:text-neutral-400 select-none leading-none flex-shrink-0"
+            aria-label="Drag column"
+          >
+            ⠿
+          </span>
           <InlineEdit
             value={column.title}
             onCommit={(t) => renameColumn(doc, column.id, t)}
@@ -61,21 +108,62 @@ export function ColumnView({
             {cards.length}
           </span>
         </div>
-        <button
-          onClick={() => {
-            if (
-              window.confirm(
-                `Delete column "${column.title}" and its ${cards.length} card(s)?`,
-              )
-            ) {
-              deleteColumn(doc, column.id);
-            }
-          }}
-          className="text-neutral-500 hover:text-neutral-200 text-lg leading-none ml-2"
-          aria-label="Delete column"
-        >
-          ×
-        </button>
+        <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+          {/* Accent picker — same palette as labels. */}
+          <details className="relative">
+            <summary
+              className="list-none cursor-pointer text-sm leading-none"
+              style={{
+                color: column.accentColor
+                  ? paletteEntry(column.accentColor).dot
+                  : undefined,
+              }}
+              title="Column accent"
+            >
+              ●
+            </summary>
+            <div className="absolute right-0 z-10 mt-1 bg-[var(--surface-card)] border border-[var(--hairline)] rounded-md p-2 flex gap-1.5">
+              <button
+                onClick={() => setColumnAccent(doc, column.id, undefined)}
+                className="w-5 h-5 rounded-full border border-neutral-600 text-[10px] text-neutral-400 flex items-center justify-center"
+                aria-label="No accent"
+              >
+                ×
+              </button>
+              {PALETTE.map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() => setColumnAccent(doc, column.id, p.key)}
+                  className="w-5 h-5 rounded-full t-base"
+                  style={{
+                    backgroundColor: p.dot,
+                    outline:
+                      column.accentColor === p.key
+                        ? "2px solid white"
+                        : "none",
+                    outlineOffset: "1px",
+                  }}
+                  aria-label={p.name}
+                />
+              ))}
+            </div>
+          </details>
+          <button
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Delete column "${column.title}" and its ${cards.length} card(s)?`,
+                )
+              ) {
+                deleteColumn(doc, column.id);
+              }
+            }}
+            className="text-neutral-500 hover:text-neutral-200 text-lg leading-none"
+            aria-label="Delete column"
+          >
+            ×
+          </button>
+        </div>
       </div>
 
       <div

@@ -1,6 +1,14 @@
 import * as Y from "yjs";
 import { InlineEdit } from "./InlineEdit";
-import { deleteCard, renameCard, type Card } from "./board-model";
+import {
+  deleteCard,
+  getCardLabelIds,
+  getLabelsMap,
+  renameCard,
+  type Card,
+  type LabelDef,
+} from "./board-model";
+import { LabelPill } from "./labels-ui";
 import { colorForUser, initialFor } from "./avatar";
 
 export function CardView({
@@ -17,8 +25,22 @@ export function CardView({
   const isOverdue =
     card.dueDate && new Date(card.dueDate) < new Date(new Date().toDateString());
 
+  // Resolve this card's label ids to defs. .filter(Boolean) drops dangling ids
+  // (label deleted while the card still references it) → renders nothing, no crash.
+  const labelsMap = getLabelsMap(doc);
+  const defs = getCardLabelIds(doc, card.id)
+    .map((id) => labelsMap.get(id))
+    .filter(Boolean) as LabelDef[];
+
   return (
     <div className="group bg-neutral-800 hover:bg-neutral-700/70 border border-neutral-700/60 hover:border-neutral-600 rounded-lg p-3 elev-card hover:elev-card-hover hover:-translate-y-px t-base">
+      {defs.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {defs.map((def, i) => (
+            <LabelPill key={i} def={def} />
+          ))}
+        </div>
+      )}
       <div className="flex items-start justify-between gap-2">
         <InlineEdit
           value={card.title}

@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { API_URL } from "./env";
 
-const LOGIN_URL = "http://localhost:1235/login";
+const LOGIN_URL = `${API_URL}/login`;
 
 export function Login({ onLogin }: { onLogin: (token: string) => void }) {
   const [username, setUsername] = useState("");

@@ -1,6 +1,7 @@
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { IndexeddbPersistence } from "y-indexeddb";
+import { WS_URL } from "./env";
 
 export type YjsClient = {
   doc: Y.Doc;
@@ -8,8 +9,6 @@ export type YjsClient = {
   idb: IndexeddbPersistence;
   destroy: () => void;
 };
-
-const WS_URL = "ws://localhost:1234";
 
 // Factory instead of module-scope singletons: the provider can't be built at
 // import time anymore because it needs a token, and we must be able to tear it

@@ -1,7 +1,9 @@
 // Centralized auth-server access: one base URL, one place for the bearer-token
 // header, one error type. Components call these instead of hand-rolling fetch.
 
-const AUTH_BASE = "http://localhost:1235";
+import { API_URL } from "./env";
+
+const AUTH_BASE = API_URL;
 
 function authHeaders(token: string): HeadersInit {
   return {

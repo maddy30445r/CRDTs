@@ -17,7 +17,16 @@ import { generateKeyBetween } from "fractional-indexing";
 import { nanoid } from "nanoid";
 import * as y from "yjs";
 
-export type Column = { id: string; title: string; sortKey: string };
+export type Column = {
+  id: string;
+  title: string;
+  sortKey: string;
+  accentColor?: string; // NEW — palette key, or undefined for no accent
+};
+
+// A board-level label definition. color is a PALETTE key (e.g. "indigo"), not a
+// raw color — the palette guarantees dark-theme-readable contrast.
+export type LabelDef = { name: string; color: string };
 
 export type Card = {
   id: string;
@@ -44,6 +53,46 @@ export function getColumnsMap(doc: y.Doc): y.Map<Column> {
 
 export function getCardsMap(doc: y.Doc): y.Map<Card> {
   return doc.getMap<Card>("cards");
+}
+
+// Board-level label registry: labelId -> LabelDef (plain object, LWW per label).
+export function getLabelsMap(doc: y.Doc): y.Map<LabelDef> {
+  return doc.getMap<LabelDef>("labels");
+}
+
+// Per-card label membership: cardId -> Y.Map<labelId, true> (a nested CRDT set).
+// Stored parallel to "cards" (NOT nested inside the Card object) so card scalar
+// fields stay plain-object LWW while membership merges per-key offline.
+export function getCardLabelsMap(doc: y.Doc): y.Map<y.Map<boolean>> {
+  return doc.getMap("cardLabels");
+}
+
+// ============================================================
+// Palette — shared by labels AND column accents. Kept as data so the picker and
+// the pill renderer agree. ~8 colors curated to read on the dark theme.
+// ============================================================
+
+export const PALETTE: {
+  key: string;
+  name: string;
+  bg: string;
+  text: string;
+  dot: string;
+}[] = [
+  { key: "slate", name: "Slate", bg: "rgba(148,163,184,0.18)", text: "#cbd5e1", dot: "#94a3b8" },
+  { key: "indigo", name: "Indigo", bg: "rgba(99,102,241,0.20)", text: "#c7d2fe", dot: "#6366f1" },
+  { key: "violet", name: "Violet", bg: "rgba(168,85,247,0.20)", text: "#e9d5ff", dot: "#a855f7" },
+  { key: "pink", name: "Pink", bg: "rgba(236,72,153,0.20)", text: "#fbcfe8", dot: "#ec4899" },
+  { key: "red", name: "Red", bg: "rgba(239,68,68,0.20)", text: "#fecaca", dot: "#ef4444" },
+  { key: "amber", name: "Amber", bg: "rgba(245,158,11,0.20)", text: "#fde68a", dot: "#f59e0b" },
+  { key: "green", name: "Green", bg: "rgba(34,197,94,0.20)", text: "#bbf7d0", dot: "#22c55e" },
+  { key: "teal", name: "Teal", bg: "rgba(20,184,166,0.20)", text: "#99f6e4", dot: "#14b8a6" },
+];
+
+// Resolve a palette key to its entry; falls back to the first color for unknown
+// keys (e.g. data from a future palette version).
+export function paletteEntry(key: string) {
+  return PALETTE.find((p) => p.key === key) ?? PALETTE[0];
 }
 
 // ============================================================
@@ -261,7 +310,11 @@ export function setCardAssignee(
 
 export function deleteCard(doc: y.Doc, cardId: string): void {
   const cards = getCardsMap(doc);
-  doc.transact(() => cards.delete(cardId));
+  const cardLabels = getCardLabelsMap(doc);
+  doc.transact(() => {
+    cards.delete(cardId);
+    cardLabels.delete(cardId); // clean up the label set, avoid orphaned sets
+  });
 }
 
 // ----- the load-bearing one -----
@@ -351,4 +404,103 @@ function rebalanceColumn(doc: y.Doc, columnId: string): void {
       prev = newKey;
     }
   });
+}
+
+// ============================================================
+// Mutators — column accent (plain field on the Column object, LWW is fine)
+// ============================================================
+
+export function setColumnAccent(
+  doc: y.Doc,
+  columnId: string,
+  accentColor: string | undefined,
+): void {
+  const columns = getColumnsMap(doc);
+  const existing = columns.get(columnId);
+  if (!existing) return;
+  doc.transact(() => columns.set(columnId, { ...existing, accentColor }));
+}
+
+// ============================================================
+// Mutators — label registry (LWW per label, like a card title)
+// ============================================================
+
+export function createLabel(doc: y.Doc, name: string, color: string): string {
+  const labels = getLabelsMap(doc);
+  const id = nanoid(8);
+  doc.transact(() => labels.set(id, { name, color }));
+  return id;
+}
+
+export function renameLabel(doc: y.Doc, labelId: string, name: string): void {
+  const labels = getLabelsMap(doc);
+  const existing = labels.get(labelId);
+  if (!existing) return;
+  doc.transact(() => labels.set(labelId, { ...existing, name }));
+}
+
+export function recolorLabel(doc: y.Doc, labelId: string, color: string): void {
+  const labels = getLabelsMap(doc);
+  const existing = labels.get(labelId);
+  if (!existing) return;
+  doc.transact(() => labels.set(labelId, { ...existing, color }));
+}
+
+export function deleteLabel(doc: y.Doc, labelId: string): void {
+  // Remove the definition. Dangling references on cards become harmless no-ops
+  // (filtered at render). No cascade cleanup — that'd be a multi-card write storm.
+  const labels = getLabelsMap(doc);
+  doc.transact(() => labels.delete(labelId));
+}
+
+export function getLabelsSorted(
+  labels: y.Map<LabelDef>,
+): { id: string; def: LabelDef }[] {
+  const out: { id: string; def: LabelDef }[] = [];
+  labels.forEach((def, id) => out.push({ id, def }));
+  out.sort((a, b) => a.def.name.localeCompare(b.def.name));
+  return out;
+}
+
+// ============================================================
+// Card label membership — the Y.Map<labelId, true> set per card.
+// Per-key add/remove merges cleanly offline (the whole reason for a set, not an
+// array): concurrent add "bug" + add "urgent" on the same card keeps BOTH.
+// ============================================================
+
+// Get the live set for a card, creating it lazily on first add. Returns the
+// nested Y.Map. MUST be called inside a transaction (it may write).
+function ensureCardLabelSet(doc: y.Doc, cardId: string): y.Map<boolean> {
+  const cardLabels = getCardLabelsMap(doc);
+  let set = cardLabels.get(cardId);
+  if (!set) {
+    set = new y.Map<boolean>();
+    cardLabels.set(cardId, set);
+  }
+  return set;
+}
+
+export function addCardLabel(doc: y.Doc, cardId: string, labelId: string): void {
+  doc.transact(() => {
+    const set = ensureCardLabelSet(doc, cardId);
+    set.set(labelId, true);
+  });
+}
+
+export function removeCardLabel(
+  doc: y.Doc,
+  cardId: string,
+  labelId: string,
+): void {
+  doc.transact(() => {
+    const set = getCardLabelsMap(doc).get(cardId);
+    if (set) set.delete(labelId);
+  });
+}
+
+// Read a card's label ids (just the keys present in its set).
+export function getCardLabelIds(doc: y.Doc, cardId: string): string[] {
+  const set = getCardLabelsMap(doc).get(cardId);
+  if (!set) return [];
+  return Array.from(set.keys());
 }
